@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="20" fill="#FAF8F4"/>
+  <rect x="3" y="3" width="122" height="122" rx="18" fill="#FFFFFF" stroke="#496B5D" stroke-width="2.5" stroke-opacity="0.3"/>
+  <text x="64" y="74" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-size="52" font-weight="800" text-anchor="middle" fill="#583584" letter-spacing="-1">DM</text>
+  <rect x="22" y="86" width="84" height="20" rx="6" fill="#C42026"/>
+  <text x="64" y="100" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-size="10" font-weight="700" text-anchor="middle" fill="#FFFFFF" letter-spacing="1">swahithi</text>
+</svg>

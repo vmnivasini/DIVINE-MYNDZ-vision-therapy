@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vision Therapy Stimulus App</title>
+  <style>
+    body, html { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; font-family: sans-serif; }
+    #adminPanel {
+      position: absolute; top: 15px; left: 15px; background: rgba(30, 30, 30, 0.9);
+      color: #fff; padding: 20px; border-radius: 8px; z-index: 10; max-width: 320px;
+    }
+    .field { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; margin-bottom: 4px; text-transform: uppercase; }
+    input, select { width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #555; background: #222; color: #fff; }
+    button { width: 100%; padding: 10px; background: #0070f3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+    button:hover { background: #0051b3; }
+    canvas { display: block; width: 100vw; height: 100vh; }
+  </style>
+</head>
+<body>
+
+  <div id="adminPanel">
+    <h3>Therapy Parameters</h3>
+    <div class="field">
+      <label>Mode</label>
+      <select id="mode">
+        <option value="pursuit">Continuous Pursuit</option>
+        <option value="saccade">Saccadic Stimuli</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Movement / Trajectory</label>
+      <select id="movement">
+        <option value="horizontal">Horizontal</option>
+        <option value="vertical">Vertical</option>
+        <option value="angular">Angular (45 deg)</option>
+        <option value="random">Random Walk</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Target Object / Character</label>
+      <select id="targetShape">
+        <option value="ball">🔴 Classic Ball</option>
+        <option value="tiger">🐯 Tiger Face</option>
+        <option value="cat">🐱 Cat Face</option>
+        <option value="dog">🐶 Dog Face</option>
+        <option value="panda">🐼 Panda Face</option>
+        <option value="lion">🦁 Lion Face</option>
+        <option value="bunny">🐰 Bunny Face</option>
+        <option value="star">⭐ Star</option>
+        <option value="butterfly">🦋 Butterfly</option>
+        <option value="soccer">⚽ Soccer Ball</option>
+        <option value="car">🚗 Car</option>
+        <option value="fish">🐠 Fish</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Background Color</label>
+      <select id="bgColor">
+        <option value="#000000">Black</option>
+        <option value="#FFFFFF">White</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Target Color</label>
+      <input type="color" id="targetColor" value="#FF0000">
+    </div>
+    <div class="field">
+      <label>Target Size (px)</label>
+      <input type="number" id="targetSize" value="40" min="10" max="200">
+    </div>
+    <div class="field">
+      <label>Start Speed (px/sec)</label>
+      <input type="number" id="speedStart" value="250" min="50" max="1500">
+    </div>
+    <div class="field">
+      <label>End Speed (Acceleration Ramp)</label>
+      <input type="number" id="speedEnd" value="600" min="50" max="2000">
+    </div>
+    <div class="field">
+      <label>Session Duration (seconds)</label>
+      <input type="number" id="duration" value="30" min="5" max="300">
+    </div>
+    <button onclick="startSession()">Launch Session</button>
+  </div>
+
+  <canvas id="viewport"></canvas>
+
+  <script>
+    const canvas = document.getElementById('viewport');
+    const ctx = canvas.getContext('2d');
+    let animId = null;
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    function startSession() {
+      if (animId) cancelAnimationFrame(animId);
+
+      const config = {
+        targetShape: document.getElementById('targetShape').value,
+        mode: document.getElementById('mode').value,
+        movement: document.getElementById('movement').value,
+        bg: document.getElementById('bgColor').value,
+        color: document.getElementById('targetColor').value,
+        size: parseFloat(document.getElementById('targetSize').value),
+        vStart: parseFloat(document.getElementById('speedStart').value),
+        vEnd: parseFloat(document.getElementById('speedEnd').value),
+        duration: parseFloat(document.getElementById('duration').value),
+        dwellMs: 1000,
+        isiMs: 300,
+        jitterPct: 20
+      };
+
+      const SHAPE_EMOJIS = {
+        tiger: '🐯',
+        cat: '🐱',
+        dog: '🐶',
+        panda: '🐼',
+        lion: '🦁',
+        bunny: '🐰',
+        star: '⭐',
+        butterfly: '🦋',
+        soccer: '⚽',
+        car: '🚗',
+        fish: '🐠'
+      };
+
+      // Hide admin panel during execution
+      document.getElementById('adminPanel').style.display = 'none';
+
+      let startTime = null;
+      let lastTime = null;
+      let pos = { x: canvas.width / 2, y: canvas.height / 2 };
+      let heading = Math.PI / 4; // 45 deg for angular
+      let saccadeState = 'VISIBLE'; // 'VISIBLE' | 'BLANK'
+      let stateTimer = 0;
+      let currentDwell = config.dwellMs;
+
+      function render(now) {
+        if (!startTime) { startTime = now; lastTime = now; }
+        const dt = (now - lastTime) / 1000;
+        const totalElapsed = (now - startTime) / 1000;
+        lastTime = now;
+
+        // Session Cutoff
+        if (totalElapsed >= config.duration) {
+          ctx.fillStyle = config.bg;
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          document.getElementById('adminPanel').style.display = 'block';
+          return;
+        }
+
+        // Speed Interpolation
+        const progress = Math.min(totalElapsed / config.duration, 1.0);
+        const currentSpeed = config.vStart + (config.vEnd - config.vStart) * progress;
+
+        // --- Logic Branching ---
+        if (config.mode === 'pursuit') {
+          if (config.movement === 'horizontal') {
+            pos.x += currentSpeed * dt;
+            if (pos.x > canvas.width + config.size) pos.x = -config.size;
+          } else if (config.movement === 'vertical') {
+            pos.y += currentSpeed * dt;
+            if (pos.y > canvas.height + config.size) pos.y = -config.size;
+          } else if (config.movement === 'angular') {
+            pos.x += Math.cos(heading) * currentSpeed * dt;
+            pos.y += Math.sin(heading) * currentSpeed * dt;
+            if (pos.x <= 0 || pos.x >= canvas.width) heading = Math.PI - heading;
+            if (pos.y <= 0 || pos.y >= canvas.height) heading = -heading;
+          } else if (config.movement === 'random') {
+            heading += (Math.random() - 0.5) * 0.3;
+            pos.x += Math.cos(heading) * currentSpeed * dt;
+            pos.y += Math.sin(heading) * currentSpeed * dt;
+            if (pos.x < 0 || pos.x > canvas.width || pos.y < 0 || pos.y > canvas.height) heading += Math.PI;
+          }
+        } else {
+          // Saccade State Machine
+          stateTimer += dt * 1000;
+          if (saccadeState === 'VISIBLE' && stateTimer >= currentDwell) {
+            saccadeState = 'BLANK';
+            stateTimer = 0;
+          } else if (saccadeState === 'BLANK' && stateTimer >= config.isiMs) {
+            saccadeState = 'VISIBLE';
+            stateTimer = 0;
+            const margin = config.size * 2;
+            pos.x = margin + Math.random() * (canvas.width - 2 * margin);
+            pos.y = margin + Math.random() * (canvas.height - 2 * margin);
+            const jitter = 1 + ((Math.random() * 2 - 1) * (config.jitterPct / 100));
+            currentDwell = config.dwellMs * jitter;
+          }
+        }
+
+        // --- Render ---
+        ctx.fillStyle = config.bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (config.mode !== 'saccade' || saccadeState === 'VISIBLE') {
+          const emoji = SHAPE_EMOJIS[config.targetShape];
+          if (emoji) {
+            ctx.font = `${Math.round(config.size)}px 'Segoe UI Emoji', 'Apple Color Emoji', sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(emoji, pos.x, pos.y);
+          } else {
+            ctx.fillStyle = config.color;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y, config.size / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        animId = requestAnimationFrame(render);
+      }
+
+      animId = requestAnimationFrame(render);
+    }
+
+    // Press Escape to abort session
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (animId) cancelAnimationFrame(animId);
+        document.getElementById('adminPanel').style.display = 'block';
+      }
+    });
+  </script>
+</body>
+</html>
